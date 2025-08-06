@@ -61,6 +61,15 @@ const gattUuids = {
         "0000180f-0000-1000-8000-00805f9b34fb": "Battery Service",
         "0000180d-0000-1000-8000-00805f9b34fb": "Heart Rate",
         "0000181c-0000-1000-8000-00805f9b34fb": "User Data",
+        "00001812-0000-1000-8000-00805f9b34fb": "Human Interface Device",
+        "0000181a-0000-1000-8000-00805f9b34fb": "Environmental Sensing",
+        "0000181e-0000-1000-8000-00805f9b34fb": "Bond Management Service",
+        "0000181f-0000-1000-8000-00805f9b34fb": "Continuous Glucose Monitoring",
+        "00001803-0000-1000-8000-00805f9b34fb": "Link Loss",
+        "00001804-0000-1000-8000-00805f9b34fb": "Tx Power",
+        "00001805-0000-1000-8000-00805f9b34fb": "Current Time",
+        "0000180e-0000-1000-8000-00805f9b34fb": "Phone Alert Status Service",
+        "00001802-0000-1000-8000-00805f9b34fb": "Immediate Alert",
     },
     characteristics: {
         "00002a00-0000-1000-8000-00805f9b34fb": "Device Name",
@@ -205,6 +214,8 @@ async function startBluetoothScan() {
     try {
         const options = {
             acceptAllDevices: true,
+            // FIX: Request permission for common services to prevent access errors.
+            optionalServices: Object.keys(gattUuids.services)
         };
 
         const device = await navigator.bluetooth.requestDevice(options);
