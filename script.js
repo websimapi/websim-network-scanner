@@ -5,12 +5,6 @@ const fakeWifiSSIDs = [
     "ASUS_5G", "TP-Link_Router", "Hidden Network"
 ];
 
-const fakeBluetoothNames = [
-    "AirPods Pro", "JBL Charge 5", "WH-1000XM5", "Logitech MX Master 3",
-    "Smart TV 4K", "Apple Watch", "Fitbit Versa 3", "Bose SoundLink",
-    "Tesla Model 3", "Tile Mate"
-];
-
 // --- Audio Context for Sound Effects ---
 let audioContext;
 let scanBuffer;
@@ -42,6 +36,12 @@ const wifiList = document.getElementById('wifi-list');
 const bluetoothList = document.getElementById('bluetooth-list');
 const wifiStatus = document.getElementById('wifi-status');
 const bluetoothStatus = document.getElementById('bluetooth-status');
+const modal = document.getElementById('modal');
+const modalCloseBtn = document.querySelector('.close-button');
+const modalDeviceName = document.getElementById('modal-device-name');
+const modalDeviceId = document.getElementById('modal-device-id');
+const modalDeviceSignal = document.getElementById('modal-device-signal');
+const connectBtn = document.getElementById('connect-btn');
 
 // --- EVENT LISTENERS ---
 wifiScanBtn.addEventListener('click', () => {
@@ -53,13 +53,30 @@ bluetoothScanBtn.addEventListener('click', () => {
     startScan('bluetooth');
 });
 
+modalCloseBtn.addEventListener('click', () => {
+    modal.style.display = 'none';
+});
+
+window.addEventListener('click', (event) => {
+    if (event.target == modal) {
+        modal.style.display = 'none';
+    }
+});
+
 // --- SCANNING LOGIC ---
 function startScan(type) {
-    const isWifi = type === 'wifi';
-    const listEl = isWifi ? wifiList : bluetoothList;
-    const statusEl = isWifi ? wifiStatus : bluetoothStatus;
-    const btnEl = isWifi ? wifiScanBtn : bluetoothScanBtn;
-    const dataSet = isWifi ? fakeWifiSSIDs : fakeBluetoothNames;
+    if (type === 'bluetooth') {
+        startBluetoothScan();
+    } else {
+        startWifiScan();
+    }
+}
+
+function startWifiScan() {
+    const listEl = wifiList;
+    const statusEl = wifiStatus;
+    const btnEl = wifiScanBtn;
+    const dataSet = fakeWifiSSIDs;
 
     // Reset UI
     listEl.innerHTML = '';
@@ -77,17 +94,85 @@ function startScan(type) {
     const scanInterval = setInterval(() => {
         if (itemsFound >= itemsToFind) {
             clearInterval(scanInterval);
-            statusEl.textContent = `Status: Found ${itemsFound} ${isWifi ? 'networks' : 'devices'}`;
+            statusEl.textContent = `Status: Found ${itemsFound} networks`;
             statusEl.classList.remove('scanning');
             btnEl.disabled = false;
             return;
         }
 
         const itemName = dataSet[Math.floor(Math.random() * dataSet.length)];
-        const listItem = isWifi ? createWifiItem(itemName) : createBluetoothItem(itemName);
+        const listItem = createWifiItem(itemName);
         listEl.appendChild(listItem);
         itemsFound++;
     }, interval);
+}
+
+async function startBluetoothScan() {
+    if (!navigator.bluetooth) {
+        bluetoothStatus.textContent = "Status: Web Bluetooth not supported!";
+        return;
+    }
+
+    const btnEl = bluetoothScanBtn;
+    const statusEl = bluetoothStatus;
+    const listEl = bluetoothList;
+
+    // Reset UI
+    listEl.innerHTML = '';
+    btnEl.disabled = true;
+    statusEl.textContent = 'Status: Awaiting user selection...';
+    statusEl.classList.add('scanning');
+    
+    playScanSound();
+
+    try {
+        const options = {
+            acceptAllDevices: true,
+            // Optional: To get more info like services, which can be useful
+            // but might narrow down the discoverable devices.
+            // optionalServices: ['battery_service', 'device_information_service'] 
+        };
+
+        const device = await navigator.bluetooth.requestDevice(options);
+        
+        statusEl.textContent = 'Status: Device found!';
+        const listItem = createBluetoothItem(device.name || 'Unknown Device', device.id);
+        listEl.appendChild(listItem);
+
+        listItem.addEventListener('click', () => {
+            modalDeviceName.textContent = `Name: ${device.name || 'Unknown Device'}`;
+            modalDeviceId.textContent = `ID: ${device.id}`;
+            // Real signal strength isn't available from this API, so we'll fake it for the modal.
+            modalDeviceSignal.textContent = `Signal: ${Math.floor(Math.random() * 60) + 40}%`;
+            modal.style.display = 'block';
+
+            // Simple connection log for demonstration
+            connectBtn.onclick = async () => {
+                try {
+                    console.log('Attempting to connect to GATT Server...');
+                    statusEl.textContent = `Status: Connecting to ${device.name || 'device'}...`;
+                    const server = await device.gatt.connect();
+                    console.log('Connected to GATT Server:', server);
+                    statusEl.textContent = `Status: Connected to ${device.name || 'device'}!`;
+                    modal.style.display = 'none';
+                    // You could now interact with services and characteristics
+                    // server.disconnect();
+                } catch (error) {
+                    console.error('Connection failed:', error);
+                    statusEl.textContent = `Status: Connection Failed.`;
+                    modal.style.display = 'none';
+                }
+            };
+        });
+
+
+    } catch (error) {
+        console.error('Bluetooth scan failed:', error);
+        statusEl.textContent = 'Status: Scan cancelled or failed.';
+    } finally {
+        statusEl.classList.remove('scanning');
+        btnEl.disabled = false;
+    }
 }
 
 // --- ITEM CREATION ---
@@ -111,16 +196,16 @@ function createWifiItem(name) {
     return li;
 }
 
-function createBluetoothItem(name) {
+function createBluetoothItem(name, id) {
     const li = document.createElement('li');
     li.className = 'result-item';
+    li.style.cursor = 'pointer'; // Make it look clickable
     const signal = Math.floor(Math.random() * (100 - 20 + 1) + 20); // 20-100%
-    const mac = Array(6).fill(0).map(() => Math.floor(Math.random() * 256).toString(16).padStart(2, '0')).join(':');
 
     li.innerHTML = `
         <div class="result-info">
             <strong>${name}</strong>
-            <span>Device Address: ${mac.toUpperCase()}</span>
+            <span class="device-id">ID: ${id.substring(0, 20)}...</span>
         </div>
         <div class="signal-strength">
             ${createSignalBars(signal)}
@@ -146,4 +231,3 @@ function createSignalBars(percentage) {
         </div>
     `;
 }
-
