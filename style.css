@@ -250,6 +250,12 @@ button:disabled {
     color: #aaa;
 }
 
+.wifi-security {
+    font-size: 0.9em;
+    color: #aaa;
+    margin-right: 10px;
+}
+
 .device-id {
     font-family: monospace;
 }
