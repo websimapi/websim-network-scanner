@@ -203,8 +203,6 @@ button:disabled {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 15px;
-    cursor: pointer;
 }
 
 .result-item:last-child {
@@ -213,35 +211,6 @@ button:disabled {
 
 .result-item:hover {
     background-color: #ffffff11;
-}
-
-/* Button style for items in the list */
-.connect-btn-item {
-    background-color: var(--primary-color);
-    color: var(--background-color);
-    border: none;
-    padding: 8px 12px;
-    font-family: 'Roboto Mono', monospace;
-    font-size: 0.9em;
-    font-weight: bold;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: all 0.2s ease-in-out;
-    text-transform: uppercase;
-    flex-shrink: 0;
-}
-
-.connect-btn-item:hover {
-    box-shadow: 0 0 10px var(--glow-color);
-    transform: translateY(-1px);
-}
-
-.connect-btn-item:disabled {
-    background-color: #555;
-    color: #999;
-    cursor: not-allowed;
-    box-shadow: none;
-    transform: none;
 }
 
 .analysis-result {
@@ -268,10 +237,6 @@ button:disabled {
 .analysis-result .value {
     color: var(--text-color);
     text-align: right;
-}
-
-.result-info {
-    flex-grow: 1;
 }
 
 .result-info strong {
