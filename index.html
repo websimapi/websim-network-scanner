@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Scanner</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <h1>Network Scanner</h1>
+        <div class="scanner-grid">
+            <!-- WiFi Panel -->
+            <div class="panel" id="wifi-panel">
+                <div class="panel-header">
+                    <img src="wifi.png" alt="WiFi Icon" class="panel-icon">
+                    <h2>WiFi Networks</h2>
+                </div>
+                <div class="panel-controls">
+                    <button id="scan-wifi-btn">Scan WiFi</button>
+                    <p class="status" id="wifi-status">Status: Idle</p>
+                </div>
+                <ul class="results-list" id="wifi-list">
+                    <!-- WiFi results will be injected here -->
+                </ul>
+            </div>
+
+            <!-- Bluetooth Panel -->
+            <div class="panel" id="bluetooth-panel">
+                <div class="panel-header">
+                    <img src="bluetooth.png" alt="Bluetooth Icon" class="panel-icon">
+                    <h2>Bluetooth Devices</h2>
+                </div>
+                <div class="panel-controls">
+                    <button id="scan-bluetooth-btn">Scan Bluetooth</button>
+                    <p class="status" id="bluetooth-status">Status: Idle</p>
+                </div>
+                <ul class="results-list" id="bluetooth-list">
+                    <!-- Bluetooth results will be injected here -->
+                </ul>
+            </div>
+        </div>
+    </div>
+    <script type="module" src="script.js"></script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body>
+</html>
+
