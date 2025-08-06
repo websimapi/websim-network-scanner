@@ -31,7 +31,6 @@ const networkStatus = document.getElementById('network-status');
 const bluetoothStatus = document.getElementById('bluetooth-status');
 const modal = document.getElementById('modal');
 const modalCloseBtn = document.querySelector('.close-button');
-const modalTitle = document.getElementById('modal-title');
 const modalDeviceName = document.getElementById('modal-device-name');
 const modalDeviceId = document.getElementById('modal-device-id');
 const modalDeviceSignal = document.getElementById('modal-device-signal');
@@ -136,8 +135,7 @@ async function startBluetoothScan() {
     const statusEl = bluetoothStatus;
     const listEl = bluetoothList;
 
-    // Reset UI
-    listEl.innerHTML = '';
+    // Don't clear list, allow appending
     btnEl.disabled = true;
     statusEl.textContent = 'Status: Awaiting user selection...';
     statusEl.classList.add('scanning');
@@ -145,65 +143,70 @@ async function startBluetoothScan() {
     playScanSound();
 
     try {
-        // By requesting common optional services, we increase the chance of the browser
-        // providing the device's name, even with acceptAllDevices.
         const options = {
             acceptAllDevices: true,
-            optionalServices: [
-                'device_information_service',
-                'battery_service',
-                'heart_rate',
-                'generic_access'
-            ]
         };
 
         const device = await navigator.bluetooth.requestDevice(options);
         
-        statusEl.textContent = 'Status: Device found!';
-        const deviceName = device.name || `Unnamed Device (${device.id.substring(0, 6)}...)`;
-        const listItem = createBluetoothItem(deviceName, device.id);
-        listEl.appendChild(listItem);
+        // Check if device is already in the list
+        if (document.querySelector(`[data-device-id="${device.id}"]`)) {
+            statusEl.textContent = 'Status: Device already in list.';
+        } else {
+            statusEl.textContent = 'Status: Device added to list!';
+            const listItem = createBluetoothItem(device.name || 'Unknown Device', device.id);
+            listEl.appendChild(listItem);
 
-        listItem.addEventListener('click', () => {
-            if (device.name) {
-                modalTitle.textContent = `Device Found: ${device.name}`;
-                modalDeviceName.textContent = `Name: ${device.name}`;
-            } else {
-                modalTitle.textContent = `Unnamed Device Found`;
-                modalDeviceName.textContent = `Name: Not advertised`;
-            }
-            modalDeviceId.textContent = `ID: ${device.id}`;
-            // Real signal strength isn't available from this API, so we'll fake it for the modal.
-            modalDeviceSignal.textContent = `Signal: ${Math.floor(Math.random() * 60) + 40}%`;
-            modal.style.display = 'block';
+            listItem.addEventListener('click', () => {
+                modalDeviceName.textContent = `Name: ${device.name || 'Unknown Device'}`;
+                modalDeviceId.textContent = `ID: ${device.id}`;
+                // Real signal strength isn't available from this API, so we'll fake it for the modal.
+                const signal = parseInt(listItem.querySelector('.signal-strength span')?.textContent || '50');
+                modalDeviceSignal.textContent = `Signal: ${signal}%`;
+                modal.style.display = 'block';
 
-            // Simple connection log for demonstration
-            connectBtn.onclick = async () => {
-                try {
-                    const connectName = device.name || 'device';
-                    console.log(`Attempting to connect to GATT Server on ${connectName}...`);
-                    statusEl.textContent = `Status: Connecting to ${connectName}...`;
-                    const server = await device.gatt.connect();
-                    console.log('Connected to GATT Server:', server);
-                    statusEl.textContent = `Status: Connected to ${connectName}!`;
-                    modal.style.display = 'none';
-                    // You could now interact with services and characteristics
-                    // e.g., device.gatt.disconnect();
-                } catch (error) {
-                    console.error('Connection failed:', error);
-                    statusEl.textContent = `Status: Connection Failed.`;
-                    modal.style.display = 'none';
-                }
-            };
-        });
+                connectBtn.onclick = async () => {
+                    if (device.gatt.connected) {
+                         console.log('Already connected to GATT Server.');
+                         statusEl.textContent = `Status: Already connected to ${device.name || 'device'}.`;
+                         modal.style.display = 'none';
+                         return;
+                    }
 
+                    try {
+                        console.log('Attempting to connect to GATT Server...');
+                        statusEl.textContent = `Status: Connecting to ${device.name || 'device'}...`;
+                        modal.style.display = 'none'; // Close modal while connecting
+                        const server = await device.gatt.connect();
+                        console.log('Connected to GATT Server:', server);
+                        statusEl.textContent = `Status: Connected to ${device.name || 'device'}!`;
+                        // You could now interact with services and characteristics
+                        // To disconnect after some time:
+                        // device.addEventListener('gattserverdisconnected', () => {
+                        //    console.log('Device disconnected.');
+                        //    statusEl.textContent = `Status: Disconnected from ${device.name || 'device'}.`;
+                        // });
+                    } catch (error) {
+                        console.error('Connection failed:', error);
+                        statusEl.textContent = `Status: Connection Failed.`;
+                    }
+                };
+            });
+        }
 
     } catch (error) {
         console.error('Bluetooth scan failed:', error);
-        statusEl.textContent = 'Status: Scan cancelled or failed.';
+        if (error.name === 'NotFoundError') {
+             statusEl.textContent = 'Status: No device selected.';
+        } else {
+             statusEl.textContent = 'Status: Scan cancelled or failed.';
+        }
     } finally {
         statusEl.classList.remove('scanning');
         btnEl.disabled = false;
+        if(listEl.children.length > 0){
+             statusEl.textContent = 'Status: Ready to find another device.';
+        }
     }
 }
 
@@ -227,6 +230,7 @@ function createBluetoothItem(name, id) {
     const li = document.createElement('li');
     li.className = 'result-item';
     li.style.cursor = 'pointer'; // Make it look clickable
+    li.dataset.deviceId = id; // Add data attribute to identify the device
     const signal = Math.floor(Math.random() * (100 - 20 + 1) + 20); // 20-100%
 
     li.innerHTML = `
