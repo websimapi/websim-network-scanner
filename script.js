@@ -29,12 +29,6 @@ const networkResultsList = document.getElementById('network-results-list');
 const bluetoothList = document.getElementById('bluetooth-list');
 const networkStatus = document.getElementById('network-status');
 const bluetoothStatus = document.getElementById('bluetooth-status');
-const modal = document.getElementById('modal');
-const modalCloseBtn = document.querySelector('.close-button');
-const modalDeviceName = document.getElementById('modal-device-name');
-const modalDeviceId = document.getElementById('modal-device-id');
-const modalDeviceSignal = document.getElementById('modal-device-signal');
-const connectBtn = document.getElementById('connect-btn');
 
 // --- EVENT LISTENERS ---
 networkAnalyzeBtn.addEventListener('click', () => {
@@ -43,26 +37,10 @@ networkAnalyzeBtn.addEventListener('click', () => {
 });
 bluetoothScanBtn.addEventListener('click', () => {
     initAudio(); // Initialize audio on first user interaction
-    startScan('bluetooth');
-});
-
-modalCloseBtn.addEventListener('click', () => {
-    modal.style.display = 'none';
-});
-
-window.addEventListener('click', (event) => {
-    if (event.target == modal) {
-        modal.style.display = 'none';
-    }
+    startBluetoothScan();
 });
 
 // --- SCANNING LOGIC ---
-function startScan(type) {
-    if (type === 'bluetooth') {
-        startBluetoothScan();
-    }
-}
-
 async function startNetworkAnalysis() {
     const listEl = networkResultsList;
     const statusEl = networkStatus;
@@ -144,54 +122,51 @@ async function startBluetoothScan() {
     playScanSound();
 
     try {
-        // Requesting optional services increases the chance of getting a device name.
+        // Simplify options for broader compatibility.
+        // Requesting a couple of common services can help get device names.
         const options = {
             acceptAllDevices: true,
-            optionalServices: [
-                'battery_service', 
-                'device_information_service', 
-                'heart_rate',
-                'health_thermometer',
-                'c48e6067-5295-48d3-8d5c-0395f61792b1' // A common generic service
-            ]
+            optionalServices: ['battery_service', 'device_information_service']
         };
 
         const device = await navigator.bluetooth.requestDevice(options);
         
-        statusEl.textContent = 'Status: Device found!';
-        const listItem = createBluetoothItem(device.name || 'Unknown Device', device.id);
+        statusEl.textContent = 'Status: Device found! Click connect.';
+        const { listItem, connectButton } = createBluetoothItem(device, statusEl);
         listEl.appendChild(listItem);
 
-        listItem.addEventListener('click', () => {
-            modalDeviceName.textContent = `Name: ${device.name || 'Unknown Device'}`;
-            modalDeviceId.textContent = `ID: ${device.id}`;
-            // Real signal strength isn't available from this API, so we'll fake it for the modal.
-            modalDeviceSignal.textContent = `Signal: ${Math.floor(Math.random() * 60) + 40}%`;
-            modal.style.display = 'block';
-
-            // Simple connection log for demonstration
-            connectBtn.onclick = async () => {
-                try {
-                    console.log('Attempting to connect to GATT Server...');
-                    statusEl.textContent = `Status: Connecting to ${device.name || 'device'}...`;
-                    const server = await device.gatt.connect();
-                    console.log('Connected to GATT Server:', server);
-                    statusEl.textContent = `Status: Connected to ${device.name || 'device'}!`;
-                    modal.style.display = 'none';
-                    // You could now interact with services and characteristics
-                    // server.disconnect();
-                } catch (error) {
-                    console.error('Connection failed:', error);
-                    statusEl.textContent = `Status: Connection Failed.`;
-                    modal.style.display = 'none';
-                }
-            };
-        });
-
+        connectButton.onclick = async () => {
+            connectButton.disabled = true;
+            connectButton.textContent = 'Connecting...';
+            statusEl.textContent = `Status: Connecting to ${device.name || 'device'}...`;
+            try {
+                console.log('Attempting to connect to GATT Server...');
+                const server = await device.gatt.connect();
+                console.log('Connected to GATT Server:', server);
+                statusEl.textContent = `Status: Connected to ${device.name || 'device'}!`;
+                connectButton.textContent = 'Connected';
+                // You could now interact with services and characteristics
+                // To allow reconnection, we can listen for disconnection
+                device.addEventListener('gattserverdisconnected', () => {
+                    statusEl.textContent = `Status: Disconnected from ${device.name || 'device'}`;
+                    connectButton.disabled = false;
+                    connectButton.textContent = 'Connect';
+                });
+            } catch (error) {
+                console.error('Connection failed:', error);
+                statusEl.textContent = `Status: Connection Failed.`;
+                connectButton.disabled = false;
+                connectButton.textContent = 'Connect';
+            }
+        };
 
     } catch (error) {
-        console.error('Bluetooth scan failed:', error);
-        statusEl.textContent = 'Status: Scan cancelled or failed.';
+        if (error.name === 'NotFoundError') {
+             statusEl.textContent = 'Status: Scan cancelled by user.';
+        } else {
+            console.error('Bluetooth scan failed:', error);
+            statusEl.textContent = 'Status: Scan failed. See console for details.';
+        }
     } finally {
         statusEl.classList.remove('scanning');
         btnEl.disabled = false;
@@ -214,11 +189,12 @@ function addAnalysisResult(label, value) {
     networkResultsList.appendChild(li);
 }
 
-function createBluetoothItem(name, id) {
+function createBluetoothItem(device, statusEl) {
     const li = document.createElement('li');
     li.className = 'result-item';
-    li.style.cursor = 'pointer'; // Make it look clickable
     const signal = Math.floor(Math.random() * (100 - 20 + 1) + 20); // 20-100%
+    const name = device.name || 'Unknown Device';
+    const id = device.id;
 
     li.innerHTML = `
         <div class="result-info">
@@ -229,8 +205,28 @@ function createBluetoothItem(name, id) {
             ${createSignalBars(signal)}
             <span>${signal}%</span>
         </div>
+        <button class="connect-btn-item">Connect</button>
     `;
-    return li;
+    
+    const connectButton = li.querySelector('.connect-btn-item');
+
+    // Add a click listener to the whole item to open the modal for more details.
+    li.addEventListener('click', (e) => {
+        if (e.target.tagName === 'BUTTON') return; // Don't trigger if button is clicked
+
+        const modal = document.getElementById('modal');
+        document.getElementById('modal-device-name').textContent = `Name: ${name}`;
+        document.getElementById('modal-device-id').textContent = `ID: ${id}`;
+        document.getElementById('modal-device-signal').textContent = `Signal: ${signal}%`;
+        
+        // This button in modal is now for show or can be removed.
+        const connectBtnInModal = document.getElementById('connect-btn');
+        connectBtnInModal.style.display = 'none'; // Hide modal connect button to avoid confusion
+        
+        modal.style.display = 'block';
+    });
+
+    return { listItem: li, connectButton };
 }
 
 function createSignalBars(percentage) {
