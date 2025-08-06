@@ -23,21 +23,6 @@
     <div class="container">
         <h1>Network Scanner</h1>
         <div class="scanner-grid">
-            <!-- WiFi Scanner Panel -->
-            <div class="panel" id="wifi-panel">
-                <div class="panel-header">
-                    <img src="wifi.png" alt="WiFi Icon" class="panel-icon">
-                    <h2>WiFi Scanner</h2>
-                </div>
-                <div class="panel-controls">
-                    <button id="scan-wifi-btn">Scan WiFi</button>
-                    <p class="status" id="wifi-status">Status: Idle</p>
-                </div>
-                <ul class="results-list" id="wifi-results-list">
-                    <!-- WiFi scan results will be injected here -->
-                </ul>
-            </div>
-
             <!-- Bluetooth Panel -->
             <div class="panel" id="bluetooth-panel">
                 <div class="panel-header">
@@ -50,6 +35,21 @@
                 </div>
                 <ul class="results-list" id="bluetooth-list">
                     <!-- Bluetooth results will be injected here -->
+                </ul>
+            </div>
+
+            <!-- Network Analysis Panel -->
+            <div class="panel" id="network-panel">
+                <div class="panel-header">
+                    <img src="wifi.png" alt="WiFi Icon" class="panel-icon">
+                    <h2>Network Analysis</h2>
+                </div>
+                <div class="panel-controls">
+                    <button id="analyze-network-btn">Analyze Network</button>
+                    <p class="status" id="network-status">Status: Idle</p>
+                </div>
+                <ul class="results-list" id="network-results-list">
+                    <!-- Network analysis results will be injected here -->
                 </ul>
             </div>
         </div>

@@ -23,11 +23,11 @@ function playScanSound() {
 }
 
 // --- DOM ELEMENTS ---
-const scanWifiBtn = document.getElementById('scan-wifi-btn');
+const networkAnalyzeBtn = document.getElementById('analyze-network-btn');
 const bluetoothScanBtn = document.getElementById('scan-bluetooth-btn');
-const wifiResultsList = document.getElementById('wifi-results-list');
+const networkResultsList = document.getElementById('network-results-list');
 const bluetoothList = document.getElementById('bluetooth-list');
-const wifiStatus = document.getElementById('wifi-status');
+const networkStatus = document.getElementById('network-status');
 const bluetoothStatus = document.getElementById('bluetooth-status');
 const modal = document.getElementById('modal');
 const modalCloseBtn = document.querySelector('.close-button');
@@ -37,13 +37,13 @@ const modalDeviceSignal = document.getElementById('modal-device-signal');
 const connectBtn = document.getElementById('connect-btn');
 
 // --- EVENT LISTENERS ---
-scanWifiBtn.addEventListener('click', () => {
+networkAnalyzeBtn.addEventListener('click', () => {
     initAudio(); // Initialize audio on first user interaction
-    startWifiScan();
+    startNetworkAnalysis();
 });
 bluetoothScanBtn.addEventListener('click', () => {
     initAudio(); // Initialize audio on first user interaction
-    startBluetoothScan();
+    startScan('bluetooth');
 });
 
 modalCloseBtn.addEventListener('click', () => {
@@ -125,46 +125,6 @@ async function startNetworkAnalysis() {
     btnEl.disabled = false;
 }
 
-async function startWifiScan() {
-    const listEl = wifiResultsList;
-    const statusEl = wifiStatus;
-    const btnEl = scanWifiBtn;
-
-    // Reset UI
-    listEl.innerHTML = '';
-    btnEl.disabled = true;
-    statusEl.textContent = 'Status: Scanning...';
-    statusEl.classList.add('scanning');
-
-    playScanSound();
-
-    // Simulate finding networks over a few seconds
-    const fakeNetworks = [
-        { ssid: 'xfinitywifi', security: 'Open' },
-        { ssid: 'NETGEAR-5G', security: 'WPA2' },
-        { ssid: 'MySpectrumWiFi-2G', security: 'WPA2' },
-        { ssid: 'CoffeeShop_Guest', security: 'Open' },
-        { ssid: 'Linksys_Router', security: 'WPA2' },
-        { ssid: 'Hidden Network', security: 'WPA2' },
-        { ssid: 'TP-Link_Guest', security: 'WPA2' },
-        { ssid: 'ASUS_6F_5G', security: 'WPA2' },
-    ];
-
-    // Shuffle and pick a random number of networks to display
-    const networksToShow = fakeNetworks.sort(() => 0.5 - Math.random()).slice(0, Math.floor(Math.random() * 4) + 4);
-
-    for (const network of networksToShow) {
-        // Stagger the appearance of each result
-        await new Promise(resolve => setTimeout(resolve, Math.random() * 400 + 200));
-        const listItem = createWifiItem(network.ssid, network.security);
-        listEl.appendChild(listItem);
-    }
-    
-    statusEl.textContent = 'Status: Scan Complete';
-    statusEl.classList.remove('scanning');
-    btnEl.disabled = false;
-}
-
 async function startBluetoothScan() {
     if (!navigator.bluetooth) {
         bluetoothStatus.textContent = "Status: Web Bluetooth not supported!";
@@ -184,11 +144,16 @@ async function startBluetoothScan() {
     playScanSound();
 
     try {
+        // Requesting optional services increases the chance of getting a device name.
         const options = {
             acceptAllDevices: true,
-            // Optional: To get more info like services, which can be useful
-            // but might narrow down the discoverable devices.
-            // optionalServices: ['battery_service', 'device_information_service'] 
+            optionalServices: [
+                'battery_service', 
+                'device_information_service', 
+                'heart_rate',
+                'health_thermometer',
+                'c48e6067-5295-48d3-8d5c-0395f61792b1' // A common generic service
+            ]
         };
 
         const device = await navigator.bluetooth.requestDevice(options);
@@ -247,24 +212,6 @@ function addAnalysisResult(label, value) {
         <span class="value">${value}</span>
     `;
     networkResultsList.appendChild(li);
-}
-
-function createWifiItem(ssid, security) {
-    const li = document.createElement('li');
-    li.className = 'result-item';
-    const signal = Math.floor(Math.random() * (100 - 20 + 1) + 20); // 20-100%
-
-    li.innerHTML = `
-        <div class="result-info">
-            <strong>${ssid}</strong>
-            <span class="wifi-security">${security}</span>
-        </div>
-        <div class="signal-strength">
-            ${createSignalBars(signal)}
-            <span>${signal}%</span>
-        </div>
-    `;
-    return li;
 }
 
 function createBluetoothItem(name, id) {
