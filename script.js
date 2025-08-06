@@ -47,18 +47,16 @@ async function startNetworkAnalysis() {
     const btnEl = networkAnalyzeBtn;
 
     // Reset UI
-    listEl.innerHTML = '<li><div class="analysis-result"><span class="value">Gathering data...</span></div></li>';
     btnEl.disabled = true;
     statusEl.textContent = 'Status: Analyzing...';
     statusEl.classList.add('scanning');
+    listEl.innerHTML = '<li><div class="analysis-result" style="opacity:1;"><span class="value">Gathering data...</span></div></li>';
 
     playScanSound();
 
-    // Clear previous results
-    listEl.innerHTML = '';
-
-    // Simulate a slight delay for effect
+    // Clear previous results after a short delay
     await new Promise(resolve => setTimeout(resolve, 500));
+    listEl.innerHTML = '';
 
     // 1. Get Public IP Address
     try {
@@ -116,14 +114,13 @@ async function startBluetoothScan() {
     // Reset UI
     listEl.innerHTML = '';
     btnEl.disabled = true;
-    statusEl.textContent = 'Status: Awaiting user selection...';
+    btnEl.textContent = 'Scanning...';
+    statusEl.textContent = 'Status: Waiting for user to select a device...';
     statusEl.classList.add('scanning');
     
     playScanSound();
 
     try {
-        // Simplify options for broader compatibility.
-        // Requesting a couple of common services can help get device names.
         const options = {
             acceptAllDevices: true,
             optionalServices: ['battery_service', 'device_information_service']
@@ -131,7 +128,7 @@ async function startBluetoothScan() {
 
         const device = await navigator.bluetooth.requestDevice(options);
         
-        statusEl.textContent = 'Status: Device found! Click connect.';
+        statusEl.textContent = 'Status: Device found! Ready to connect.';
         const { listItem, connectButton } = createBluetoothItem(device, statusEl);
         listEl.appendChild(listItem);
 
@@ -145,12 +142,12 @@ async function startBluetoothScan() {
                 console.log('Connected to GATT Server:', server);
                 statusEl.textContent = `Status: Connected to ${device.name || 'device'}!`;
                 connectButton.textContent = 'Connected';
-                // You could now interact with services and characteristics
-                // To allow reconnection, we can listen for disconnection
+                
                 device.addEventListener('gattserverdisconnected', () => {
                     statusEl.textContent = `Status: Disconnected from ${device.name || 'device'}`;
                     connectButton.disabled = false;
                     connectButton.textContent = 'Connect';
+                    console.log('Device disconnected.');
                 });
             } catch (error) {
                 console.error('Connection failed:', error);
@@ -165,11 +162,12 @@ async function startBluetoothScan() {
              statusEl.textContent = 'Status: Scan cancelled by user.';
         } else {
             console.error('Bluetooth scan failed:', error);
-            statusEl.textContent = 'Status: Scan failed. See console for details.';
+            statusEl.textContent = 'Status: Scan failed. Check console for details.';
         }
     } finally {
         statusEl.classList.remove('scanning');
         btnEl.disabled = false;
+        btnEl.textContent = 'Find Device';
     }
 }
 
