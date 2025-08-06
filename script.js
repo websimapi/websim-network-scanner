@@ -1,10 +1,3 @@
-// --- FAKE DATA ---
-const fakeWifiSSIDs = [
-    "xfinitywifi", "NETGEAR-GUEST", "MySpectrumWiFi2G", "Linksys_Home",
-    "CoffeeShop_FreeWiFi", "Airport_WiFi", "Public_Library_Net",
-    "ASUS_5G", "TP-Link_Router", "Hidden Network"
-];
-
 // --- Audio Context for Sound Effects ---
 let audioContext;
 let scanBuffer;
@@ -30,11 +23,11 @@ function playScanSound() {
 }
 
 // --- DOM ELEMENTS ---
-const wifiScanBtn = document.getElementById('scan-wifi-btn');
+const networkAnalyzeBtn = document.getElementById('analyze-network-btn');
 const bluetoothScanBtn = document.getElementById('scan-bluetooth-btn');
-const wifiList = document.getElementById('wifi-list');
+const networkResultsList = document.getElementById('network-results-list');
 const bluetoothList = document.getElementById('bluetooth-list');
-const wifiStatus = document.getElementById('wifi-status');
+const networkStatus = document.getElementById('network-status');
 const bluetoothStatus = document.getElementById('bluetooth-status');
 const modal = document.getElementById('modal');
 const modalCloseBtn = document.querySelector('.close-button');
@@ -44,9 +37,9 @@ const modalDeviceSignal = document.getElementById('modal-device-signal');
 const connectBtn = document.getElementById('connect-btn');
 
 // --- EVENT LISTENERS ---
-wifiScanBtn.addEventListener('click', () => {
+networkAnalyzeBtn.addEventListener('click', () => {
     initAudio(); // Initialize audio on first user interaction
-    startScan('wifi');
+    startNetworkAnalysis();
 });
 bluetoothScanBtn.addEventListener('click', () => {
     initAudio(); // Initialize audio on first user interaction
@@ -67,44 +60,69 @@ window.addEventListener('click', (event) => {
 function startScan(type) {
     if (type === 'bluetooth') {
         startBluetoothScan();
-    } else {
-        startWifiScan();
     }
 }
 
-function startWifiScan() {
-    const listEl = wifiList;
-    const statusEl = wifiStatus;
-    const btnEl = wifiScanBtn;
-    const dataSet = fakeWifiSSIDs;
+async function startNetworkAnalysis() {
+    const listEl = networkResultsList;
+    const statusEl = networkStatus;
+    const btnEl = networkAnalyzeBtn;
 
     // Reset UI
-    listEl.innerHTML = '';
+    listEl.innerHTML = '<li><div class="analysis-result"><span class="value">Gathering data...</span></div></li>';
     btnEl.disabled = true;
-    statusEl.textContent = 'Status: Scanning...';
+    statusEl.textContent = 'Status: Analyzing...';
     statusEl.classList.add('scanning');
 
     playScanSound();
 
-    const scanDuration = 4000;
-    const itemsToFind = 5 + Math.floor(Math.random() * 5); // Find 5-9 items
-    const interval = scanDuration / itemsToFind;
-    let itemsFound = 0;
+    // Clear previous results
+    listEl.innerHTML = '';
 
-    const scanInterval = setInterval(() => {
-        if (itemsFound >= itemsToFind) {
-            clearInterval(scanInterval);
-            statusEl.textContent = `Status: Found ${itemsFound} networks`;
-            statusEl.classList.remove('scanning');
-            btnEl.disabled = false;
-            return;
+    // Simulate a slight delay for effect
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // 1. Get Public IP Address
+    try {
+        const ipResponse = await fetch('https://api.ipify.org?format=json');
+        const ipData = await ipResponse.json();
+        addAnalysisResult('Public IP', ipData.ip);
+    } catch (e) {
+        addAnalysisResult('Public IP', 'Unavailable');
+    }
+
+    // 2. Get Connection Info
+    const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    if (connection) {
+        addAnalysisResult('Connection Type', connection.effectiveType ? connection.effectiveType.toUpperCase() : 'Unknown');
+        if (connection.downlink) {
+            addAnalysisResult('Est. Speed', `${connection.downlink} Mbps`);
         }
+    } else {
+        addAnalysisResult('Connection Info', 'API not supported');
+    }
 
-        const itemName = dataSet[Math.floor(Math.random() * dataSet.length)];
-        const listItem = createWifiItem(itemName);
-        listEl.appendChild(listItem);
-        itemsFound++;
-    }, interval);
+    // 3. Measure Latency (Ping)
+    const startTime = performance.now();
+    try {
+        await fetch(window.location.origin, { method: 'HEAD', mode: 'no-cors' });
+        const endTime = performance.now();
+        const latency = Math.round(endTime - startTime);
+        addAnalysisResult('Latency', `${latency} ms`);
+    } catch (e) {
+        // no-cors fetch will probably throw error but we can still get timing
+        const endTime = performance.now();
+        const latency = Math.round(endTime - startTime);
+        if (latency > 0 && latency < 2000) { // Plausibility check
+             addAnalysisResult('Latency', `${latency} ms`);
+        } else {
+             addAnalysisResult('Latency', 'Unavailable');
+        }
+    }
+
+    statusEl.textContent = 'Status: Analysis Complete';
+    statusEl.classList.remove('scanning');
+    btnEl.disabled = false;
 }
 
 async function startBluetoothScan() {
@@ -176,24 +194,19 @@ async function startBluetoothScan() {
 }
 
 // --- ITEM CREATION ---
-function createWifiItem(name) {
+function addAnalysisResult(label, value) {
     const li = document.createElement('li');
-    li.className = 'result-item';
-    const signal = Math.floor(Math.random() * (100 - 30 + 1) + 30); // 30-100%
-    const security = ['WPA2', 'WPA3', 'WEP', 'Open'][Math.floor(Math.random() * 4)];
-    const mac = Array(6).fill(0).map(() => Math.floor(Math.random() * 256).toString(16).padStart(2, '0')).join(':');
+    li.className = 'analysis-result';
+    
+    // Add staggered animation delay
+    const existingItems = networkResultsList.children.length;
+    li.style.setProperty('--delay', `${existingItems * 0.1}s`);
 
     li.innerHTML = `
-        <div class="result-info">
-            <strong>${name}</strong>
-            <span>${mac.toUpperCase()} - ${security}</span>
-        </div>
-        <div class="signal-strength">
-            ${createSignalBars(signal)}
-            <span>${signal}%</span>
-        </div>
+        <span class="label">${label}:</span>
+        <span class="value">${value}</span>
     `;
-    return li;
+    networkResultsList.appendChild(li);
 }
 
 function createBluetoothItem(name, id) {
