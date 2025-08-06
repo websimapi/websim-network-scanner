@@ -12,12 +12,29 @@
 <body>
     <div id="modal" class="modal">
         <div class="modal-content">
-            <span class="close-button">&times;</span>
-            <h2>Bluetooth Device Found</h2>
-            <p id="modal-device-name"></p>
-            <p id="modal-device-id"></p>
-            <p id="modal-device-signal"></p>
-            <button id="connect-btn">Connect</button>
+            <div id="modal-initial-view">
+                <span class="close-button">&times;</span>
+                <h2>Bluetooth Device Found</h2>
+                <p id="modal-device-name"></p>
+                <p id="modal-device-id"></p>
+                <p id="modal-device-signal"></p>
+                <button id="connect-btn">Connect</button>
+            </div>
+            <div id="modal-connected-view" style="display: none;">
+                 <span class="close-button">&times;</span>
+                 <div class="connected-header">
+                    <h2 id="connected-device-name">Device Name</h2>
+                    <button id="disconnect-btn">Disconnect</button>
+                 </div>
+                 <div class="status-box" id="connection-status-box">Status: Connecting...</div>
+                 <div id="gatt-services">
+                    <!-- Services and characteristics will be populated here -->
+                 </div>
+                 <div id="data-log-container">
+                    <h3>Data Log</h3>
+                    <pre id="data-log"></pre>
+                 </div>
+            </div>
         </div>
     </div>
     <div class="container">
