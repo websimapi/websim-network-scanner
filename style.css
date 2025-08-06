@@ -390,6 +390,35 @@ button:disabled {
     text-align: right;
 }
 
+.status-indicator-container {
+    padding-right: 15px;
+}
+.status-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background-color: #555; /* Default/idle */
+    border: 1px solid #888;
+    transition: background-color 0.3s;
+}
+.status-indicator.connecting {
+    background-color: #e6a23c;
+    animation: pulse 1s infinite;
+}
+.status-indicator.connected {
+    background-color: #67c23a;
+}
+.status-indicator.disconnected {
+    background-color: #909399;
+}
+.status-indicator.error {
+    background-color: #f56c6c;
+}
+
+.result-info {
+    flex-grow: 1;
+}
+
 .result-info strong {
     color: var(--primary-color);
     display: block;

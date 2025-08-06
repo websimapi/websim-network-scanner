@@ -45,11 +45,38 @@ const gattServicesContainer = document.getElementById('gatt-services');
 const dataLog = document.getElementById('data-log');
 const connectionStatusBox = document.getElementById('connection-status-box');
 
-let connectedDevice = null;
-let gattServer = null;
+// --- Advanced State Management ---
+const connections = {}; // Manages all device connection states
+let currentViewingDeviceId = null; // Tracks which device is currently shown in the modal
 
 const textDecoder = new TextDecoder('utf-8');
 const textEncoder = new TextEncoder();
+
+// --- GATT UUID Definitions ---
+const gattUuids = {
+    services: {
+        "00001800-0000-1000-8000-00805f9b34fb": "Generic Access",
+        "00001801-0000-1000-8000-00805f9b34fb": "Generic Attribute",
+        "0000180a-0000-1000-8000-00805f9b34fb": "Device Information",
+        "0000180f-0000-1000-8000-00805f9b34fb": "Battery Service",
+        "0000180d-0000-1000-8000-00805f9b34fb": "Heart Rate",
+        "0000181c-0000-1000-8000-00805f9b34fb": "User Data",
+    },
+    characteristics: {
+        "00002a00-0000-1000-8000-00805f9b34fb": "Device Name",
+        "00002a01-0000-1000-8000-00805f9b34fb": "Appearance",
+        "00002a29-0000-1000-8000-00805f9b34fb": "Manufacturer Name String",
+        "00002a24-0000-1000-8000-00805f9b34fb": "Model Number String",
+        "00002a25-0000-1000-8000-00805f9b34fb": "Serial Number String",
+        "00002a19-0000-1000-8000-00805f9b34fb": "Battery Level",
+        "00002a37-0000-1000-8000-00805f9b34fb": "Heart Rate Measurement",
+    }
+};
+
+function getGattName(uuid, type = 'services') {
+    uuid = uuid.toLowerCase();
+    return gattUuids[type]?.[uuid] || uuid;
+}
 
 // --- EVENT LISTENERS ---
 networkAnalyzeBtn.addEventListener('click', () => {
@@ -63,23 +90,29 @@ bluetoothScanBtn.addEventListener('click', () => {
 
 modalCloseBtn.addEventListener('click', () => {
     modal.style.display = 'none';
+    currentViewingDeviceId = null;
 });
 
 // A separate close button for the connected view
 document.querySelector('#modal-connected-view .close-button').addEventListener('click', () => {
     modal.style.display = 'none';
+    currentViewingDeviceId = null;
 });
 
 disconnectBtn.addEventListener('click', () => {
-    if (gattServer && gattServer.connected) {
-        logToModal("User initiated disconnect.");
-        gattServer.disconnect();
+    if (currentViewingDeviceId && connections[currentViewingDeviceId]) {
+        const { gatt } = connections[currentViewingDeviceId];
+        if (gatt && gatt.connected) {
+            logToModal("User initiated disconnect.", currentViewingDeviceId);
+            gatt.disconnect();
+        }
     }
 });
 
 window.addEventListener('click', (event) => {
     if (event.target == modal) {
         modal.style.display = 'none';
+        currentViewingDeviceId = null;
     }
 });
 
@@ -179,31 +212,14 @@ async function startBluetoothScan() {
         // Check if device is already in the list
         if (document.querySelector(`[data-device-id="${device.id}"]`)) {
             statusEl.textContent = 'Status: Device already in list.';
+            // Still open the modal for the existing device
+            showDeviceModal(device);
         } else {
             statusEl.textContent = 'Status: Device added to list!';
-            const listItem = createBluetoothItem(device.name || 'Unknown Device', device.id);
+            const listItem = createBluetoothItem(device);
             listEl.appendChild(listItem);
 
-            listItem.addEventListener('click', () => {
-                modalDeviceName.textContent = `Name: ${device.name || 'Unknown Device'}`;
-                modalDeviceId.textContent = `ID: ${device.id}`;
-                // Real signal strength isn't available from this API, so we'll fake it for the modal.
-                const signal = parseInt(listItem.querySelector('.signal-strength span')?.textContent || '50');
-                modalDeviceSignal.textContent = `Signal: ${signal}%`;
-                modal.style.display = 'block';
-
-                connectBtn.onclick = async () => {
-                    if (device.gatt.connected) {
-                         logToModal('Already connected to GATT Server.');
-                         bluetoothStatus.textContent = `Status: Already connected to ${device.name || 'device'}.`;
-                         modal.style.display = 'none';
-                         return;
-                    }
-                    
-                    connectedDevice = device;
-                    await connectToDevice(device);
-                };
-            });
+            listItem.addEventListener('click', () => showDeviceModal(device));
         }
 
     } catch (error) {
@@ -222,94 +238,193 @@ async function startBluetoothScan() {
     }
 }
 
+// --- MODAL & UI MANAGEMENT ---
+function showDeviceModal(device) {
+    currentViewingDeviceId = device.id;
+    const connection = connections[device.id];
+
+    // If connected or connecting, show the detailed view
+    if (connection && connection.status !== 'disconnected') {
+        updateModalContent(device.id);
+        modalInitialView.style.display = 'none';
+        modalConnectedView.style.display = 'block';
+    } else { // Otherwise, show the initial connection prompt
+        modalDeviceName.textContent = `Name: ${device.name || 'Unknown Device'}`;
+        modalDeviceId.textContent = `ID: ${device.id}`;
+        
+        const listItem = document.querySelector(`[data-device-id="${device.id}"]`);
+        const signal = parseInt(listItem.querySelector('.signal-strength span')?.textContent || '50');
+        modalDeviceSignal.textContent = `Signal: ${signal}%`;
+
+        modalInitialView.style.display = 'block';
+        modalConnectedView.style.display = 'none';
+
+        connectBtn.onclick = () => {
+            connectToDevice(device);
+        };
+    }
+    modal.style.display = 'block';
+}
+
+function updateModalContent(deviceId) {
+    const connection = connections[deviceId];
+    if (!connection) return;
+
+    const { device, status, log, services } = connection;
+
+    // Update Header
+    connectedDeviceName.textContent = `Device: ${device.name || 'Unknown Device'}`;
+
+    // Update Status Box
+    connectionStatusBox.textContent = `Status: ${status}`;
+    connectionStatusBox.className = `status-box ${status}`;
+
+    // Update Log
+    dataLog.textContent = log.join('\n');
+    dataLog.scrollTop = dataLog.scrollHeight;
+
+    // Update Services
+    gattServicesContainer.innerHTML = '';
+    if (services) {
+        gattServicesContainer.appendChild(services);
+    }
+}
+
+function updateDeviceStatusIndicator(deviceId, status) {
+    const listItem = document.querySelector(`[data-device-id="${deviceId}"]`);
+    if (listItem) {
+        const indicator = listItem.querySelector('.status-indicator');
+        if(indicator) {
+            indicator.className = `status-indicator ${status}`;
+            indicator.title = `Status: ${status}`;
+        }
+    }
+}
+
 // --- DATA LOGGING & UI ---
-function logToModal(message, type = 'info') {
+function logToModal(message, deviceId, type = 'info') {
+    if (!connections[deviceId]) return;
     const timestamp = new Date().toLocaleTimeString();
-    dataLog.textContent += `[${timestamp}] ${message}\n`;
-    dataLog.scrollTop = dataLog.scrollHeight; // Auto-scroll
+    connections[deviceId].log.push(`[${timestamp}] ${message}`);
+    
+    // If the modal for this device is currently open, update it
+    if(currentViewingDeviceId === deviceId) {
+        dataLog.textContent = connections[deviceId].log.join('\n');
+        dataLog.scrollTop = dataLog.scrollHeight; // Auto-scroll
+    }
 }
 
 // --- GATT CONNECTION & INTERACTION ---
 async function connectToDevice(device) {
+    const deviceId = device.id;
+
+    // Initialize connection state
+    connections[deviceId] = {
+        device: device,
+        gatt: null,
+        status: 'connecting',
+        log: [],
+        services: null,
+    };
+
+    updateDeviceStatusIndicator(deviceId, 'connecting');
+    
     // Switch to connected view
     modalInitialView.style.display = 'none';
     modalConnectedView.style.display = 'block';
-    dataLog.textContent = ''; // Clear log
-    gattServicesContainer.innerHTML = ''; // Clear services
+    currentViewingDeviceId = deviceId;
+    updateModalContent(deviceId);
     
-    connectedDeviceName.textContent = `Device: ${device.name || 'Unknown Device'}`;
-    connectionStatusBox.textContent = `Status: Connecting...`;
-    connectionStatusBox.className = 'status-box connecting';
-    logToModal(`Attempting to connect to ${device.name} (${device.id})`);
+    logToModal(`Attempting to connect to ${device.name || 'Unknown'} (${deviceId})`, deviceId);
 
-    device.addEventListener('gattserverdisconnected', onDisconnected);
+    device.addEventListener('gattserverdisconnected', () => onDisconnected(deviceId));
 
     try {
-        gattServer = await device.gatt.connect();
-        logToModal("GATT Server connected.");
-        connectionStatusBox.textContent = `Status: Connected`;
-        connectionStatusBox.className = 'status-box connected';
-        bluetoothStatus.textContent = `Status: Connected to ${device.name || 'device'}`;
+        const gattServer = await device.gatt.connect();
+        connections[deviceId].gatt = gattServer;
+        connections[deviceId].status = 'connected';
+        updateDeviceStatusIndicator(deviceId, 'connected');
         
-        discoverServices(gattServer);
+        logToModal("GATT Server connected.", deviceId);
+        bluetoothStatus.textContent = `Status: Connected to ${device.name || 'device'}`;
+        updateModalContent(deviceId); // Update status box
+        
+        discoverServices(gattServer, deviceId);
 
     } catch (error) {
         console.error('Connection failed:', error);
-        logToModal(`Error: ${error.message}`, 'error');
-        connectionStatusBox.textContent = `Status: Connection Failed`;
-        connectionStatusBox.className = 'status-box error';
+        connections[deviceId].status = 'error';
+        logToModal(`Error: ${error.message}`, deviceId, 'error');
         bluetoothStatus.textContent = `Status: Connection Failed.`;
-        if (gattServer) {
-            gattServer.disconnect();
+        updateDeviceStatusIndicator(deviceId, 'error');
+        updateModalContent(deviceId); // Update status box
+        if (connections[deviceId].gatt) {
+            connections[deviceId].gatt.disconnect();
         }
     }
 }
 
-function onDisconnected() {
-    logToModal("Device disconnected.");
-    connectionStatusBox.textContent = `Status: Disconnected`;
-    connectionStatusBox.className = 'status-box disconnected';
+function onDisconnected(deviceId) {
+    if(!connections[deviceId]) return;
+    
+    logToModal("Device disconnected.", deviceId);
+    connections[deviceId].status = 'disconnected';
+    connections[deviceId].gatt = null;
+    
+    updateDeviceStatusIndicator(deviceId, 'disconnected');
     bluetoothStatus.textContent = 'Status: Device disconnected.';
     
-    if (connectedDevice) {
-        connectedDevice.removeEventListener('gattserverdisconnected', onDisconnected);
-    }
-    connectedDevice = null;
-    gattServer = null;
+    const { device } = connections[deviceId];
+    device.removeEventListener('gattserverdisconnected', onDisconnected);
 
-    // Reset modal after a short delay
-    setTimeout(() => {
-        if(modal.style.display === 'block') { // Only reset if still open
-            modalConnectedView.style.display = 'none';
-            modalInitialView.style.display = 'block';
-        }
-    }, 2000);
+    // If the modal for this device is currently open, update it
+    if (currentViewingDeviceId === deviceId) {
+        updateModalContent(deviceId);
+        // Reset modal after a short delay
+        setTimeout(() => {
+            if(modal.style.display === 'block' && currentViewingDeviceId === deviceId) {
+                modalConnectedView.style.display = 'none';
+                modalInitialView.style.display = 'block';
+                currentViewingDeviceId = null;
+                 modal.style.display = 'none';
+            }
+        }, 2000);
+    }
 }
 
-async function discoverServices(server) {
-    logToModal("Discovering services...");
+async function discoverServices(server, deviceId) {
+    logToModal("Discovering services...", deviceId);
+    const connection = connections[deviceId];
+    
     try {
         const services = await server.getPrimaryServices();
-        logToModal(`Found ${services.length} service(s).`);
-        gattServicesContainer.innerHTML = ''; // Clear previous
+        logToModal(`Found ${services.length} service(s).`, deviceId);
+        
+        const servicesFragment = document.createDocumentFragment();
 
         for (const service of services) {
             const serviceEl = document.createElement('div');
             serviceEl.className = 'service-container';
-            serviceEl.innerHTML = `<h4 class="service-uuid">Service: ${service.uuid}</h4>`;
-            gattServicesContainer.appendChild(serviceEl);
-            logToModal(`Exploring service: ${service.uuid}`);
-            discoverCharacteristics(service, serviceEl);
+            const serviceName = getGattName(service.uuid, 'services');
+            serviceEl.innerHTML = `<h4 class="service-uuid" title="UUID: ${service.uuid}">Service: ${serviceName}</h4>`;
+            servicesFragment.appendChild(serviceEl);
+            logToModal(`Exploring service: ${serviceName}`, deviceId);
+            discoverCharacteristics(service, serviceEl, deviceId);
         }
+        
+        connection.services = servicesFragment;
+        updateModalContent(deviceId);
+
     } catch (error) {
-        logToModal(`Service discovery failed: ${error.message}`, 'error');
+        logToModal(`Service discovery failed: ${error.message}`, deviceId, 'error');
+        updateModalContent(deviceId);
     }
 }
 
-async function discoverCharacteristics(service, serviceEl) {
+async function discoverCharacteristics(service, serviceEl, deviceId) {
     try {
         const characteristics = await service.getCharacteristics();
-        logToModal(`  > Found ${characteristics.length} characteristic(s) for service ${service.uuid}.`);
+        logToModal(`  > Found ${characteristics.length} characteristic(s) for service ${getGattName(service.uuid)}.`, deviceId);
         
         const charList = document.createElement('ul');
         charList.className = 'characteristic-list';
@@ -328,10 +443,12 @@ async function discoverCharacteristics(service, serviceEl) {
             if(canRead) propBadges += `<span class="prop-badge read">READ</span>`;
             if(canWrite) propBadges += `<span class="prop-badge write">WRITE</span>`;
             if(canNotify) propBadges += `<span class="prop-badge notify">NOTIFY</span>`;
+            
+            const charName = getGattName(characteristic.uuid, 'characteristics');
 
             charItem.innerHTML = `
                 <div class="char-info">
-                    <span class="char-uuid">Characteristic: ${characteristic.uuid}</span>
+                    <span class="char-uuid" title="UUID: ${characteristic.uuid}">Characteristic: ${charName}</span>
                     <div class="char-props">${propBadges}</div>
                 </div>
                 <div class="char-actions"></div>
@@ -345,7 +462,7 @@ async function discoverCharacteristics(service, serviceEl) {
             if (canRead) {
                 const readBtn = document.createElement('button');
                 readBtn.textContent = 'Read';
-                readBtn.onclick = () => readCharacteristic(characteristic, valueContainer);
+                readBtn.onclick = () => readCharacteristic(characteristic, valueContainer, deviceId);
                 actionsContainer.appendChild(readBtn);
             }
 
@@ -355,7 +472,7 @@ async function discoverCharacteristics(service, serviceEl) {
                 writeInput.placeholder = 'Data to send';
                 const writeBtn = document.createElement('button');
                 writeBtn.textContent = 'Send';
-                writeBtn.onclick = () => writeCharacteristic(characteristic, writeInput);
+                writeBtn.onclick = () => writeCharacteristic(characteristic, writeInput, deviceId);
                 actionsContainer.appendChild(writeInput);
                 actionsContainer.appendChild(writeBtn);
             }
@@ -363,73 +480,108 @@ async function discoverCharacteristics(service, serviceEl) {
             if (canNotify) {
                 const notifyBtn = document.createElement('button');
                 notifyBtn.textContent = 'Subscribe';
-                notifyBtn.onclick = (e) => toggleNotifications(characteristic, e.target);
+                notifyBtn.dataset.subscribed = 'false';
+                notifyBtn.onclick = (e) => toggleNotifications(characteristic, e.target, deviceId);
                 actionsContainer.appendChild(notifyBtn);
             }
         }
     } catch (error) {
-        logToModal(`  > Characteristic discovery failed for service ${service.uuid}: ${error.message}`, 'error');
+        logToModal(`  > Characteristic discovery failed for service ${getGattName(service.uuid)}: ${error.message}`, deviceId, 'error');
     }
 }
 
-async function readCharacteristic(characteristic, valueContainer) {
+function decodeCharacteristicValue(characteristic) {
+    const value = characteristic.value;
+    if (!value) return "N/A";
+
+    const uuid = characteristic.uuid.toLowerCase();
     try {
-        logToModal(`Reading from ${characteristic.uuid}...`);
-        const value = await characteristic.readValue();
-        const decodedValue = textDecoder.decode(value);
-        logToModal(`  > Received: "${decodedValue}"`);
-        valueContainer.textContent = `Last Read: "${decodedValue}"`;
+        switch(uuid) {
+            case '00002a19-0000-1000-8000-00805f9b34fb': // Battery Level
+                return `Battery: ${value.getUint8(0)}%`;
+            case '00002a29-0000-1000-8000-00805f9b34fb': // Manufacturer Name
+            case '00002a24-0000-1000-8000-00805f9b34fb': // Model Number
+            case '00002a25-0000-1000-8000-00805f9b34fb': // Serial Number
+            case '00002a00-0000-1000-8000-00805f9b34fb': // Device Name
+                return textDecoder.decode(value);
+            // Add more decoders here for other known characteristics
+            default:
+                // Attempt to decode as UTF-8 text, with a fallback for non-printable characters
+                const text = textDecoder.decode(value);
+                 // eslint-disable-next-line no-control-regex
+                if (/[\x00-\x08\x0E-\x1F]/.test(text)) {
+                    // If it contains non-printable chars, show as hex
+                     return Array.from(new Uint8Array(value.buffer)).map(b => b.toString(16).padStart(2, '0')).join(' ');
+                }
+                return `"${text}"`;
+        }
+    } catch(e) {
+        return `Error decoding: ${e.message}`;
+    }
+}
+
+async function readCharacteristic(characteristic, valueContainer, deviceId) {
+    try {
+        logToModal(`Reading from ${getGattName(characteristic.uuid, 'characteristics')}...`, deviceId);
+        await characteristic.readValue(); // This triggers the 'characteristicvaluechanged' event if successful
+        const decodedValue = decodeCharacteristicValue(characteristic);
+        logToModal(`  > Received: ${decodedValue}`, deviceId);
+        valueContainer.textContent = `Last Read: ${decodedValue}`;
         valueContainer.style.display = 'block';
     } catch (error) {
-        logToModal(`  > Read failed: ${error.message}`, 'error');
+        logToModal(`  > Read failed: ${error.message}`, deviceId, 'error');
     }
 }
 
-async function writeCharacteristic(characteristic, inputEl) {
+async function writeCharacteristic(characteristic, inputEl, deviceId) {
     const value = inputEl.value;
     if (!value) {
-        logToModal("Write Error: Input is empty.", 'error');
+        logToModal("Write Error: Input is empty.", deviceId, 'error');
         return;
     }
     try {
-        logToModal(`Writing "${value}" to ${characteristic.uuid}...`);
+        logToModal(`Writing "${value}" to ${getGattName(characteristic.uuid, 'characteristics')}...`, deviceId);
         await characteristic.writeValue(textEncoder.encode(value));
-        logToModal(`  > Write successful.`);
+        logToModal(`  > Write successful.`, deviceId);
         inputEl.value = '';
     } catch(error) {
-        logToModal(`  > Write failed: ${error.message}`, 'error');
+        logToModal(`  > Write failed: ${error.message}`, deviceId, 'error');
     }
 }
 
-async function toggleNotifications(characteristic, button) {
-    if (button.textContent === 'Subscribe') {
+async function toggleNotifications(characteristic, button, deviceId) {
+    const isSubscribed = button.dataset.subscribed === 'true';
+
+    if (!isSubscribed) {
         try {
-            logToModal(`Subscribing to notifications for ${characteristic.uuid}...`);
+            logToModal(`Subscribing to notifications for ${getGattName(characteristic.uuid, 'characteristics')}...`, deviceId);
             await characteristic.startNotifications();
-            characteristic.addEventListener('characteristicvaluechanged', handleCharacteristicValueChanged);
+            characteristic.addEventListener('characteristicvaluechanged', (event) => handleCharacteristicValueChanged(event, deviceId));
             button.textContent = 'Unsubscribe';
-            logToModal('  > Subscribed successfully.');
+            button.dataset.subscribed = 'true';
+            logToModal('  > Subscribed successfully.', deviceId);
         } catch (error) {
-            logToModal(`  > Subscription failed: ${error.message}`, 'error');
+            logToModal(`  > Subscription failed: ${error.message}`, deviceId, 'error');
         }
     } else {
          try {
-            logToModal(`Unsubscribing from ${characteristic.uuid}...`);
+            logToModal(`Unsubscribing from ${getGattName(characteristic.uuid, 'characteristics')}...`, deviceId);
             await characteristic.stopNotifications();
-            characteristic.removeEventListener('characteristicvaluechanged', handleCharacteristicValueChanged);
+            // Note: The event listener is kept, but stopNotifications() prevents it from firing.
+            // Removing it can be complex if multiple listeners exist.
             button.textContent = 'Subscribe';
-            logToModal('  > Unsubscribed successfully.');
+            button.dataset.subscribed = 'false';
+            logToModal('  > Unsubscribed successfully.', deviceId);
         } catch (error) {
-            logToModal(`  > Unsubscribe failed: ${error.message}`, 'error');
+            logToModal(`  > Unsubscribe failed: ${error.message}`, deviceId, 'error');
         }
     }
 }
 
-function handleCharacteristicValueChanged(event) {
+function handleCharacteristicValueChanged(event, deviceId) {
     const characteristic = event.target;
-    const value = characteristic.value;
-    const decodedValue = textDecoder.decode(value);
-    logToModal(`[NOTIFY] from ${characteristic.uuid}: "${decodedValue}"`);
+    const decodedValue = decodeCharacteristicValue(characteristic);
+    logToModal(`[NOTIFY] from ${getGattName(characteristic.uuid, 'characteristics')}: ${decodedValue}`, deviceId);
 }
 
 // --- ITEM CREATION ---
@@ -448,17 +600,20 @@ function addAnalysisResult(label, value) {
     networkResultsList.appendChild(li);
 }
 
-function createBluetoothItem(name, id) {
+function createBluetoothItem(device) {
     const li = document.createElement('li');
     li.className = 'result-item';
     li.style.cursor = 'pointer'; // Make it look clickable
-    li.dataset.deviceId = id; // Add data attribute to identify the device
+    li.dataset.deviceId = device.id; // Add data attribute to identify the device
     const signal = Math.floor(Math.random() * (100 - 20 + 1) + 20); // 20-100%
 
     li.innerHTML = `
+        <div class="status-indicator-container">
+            <div class="status-indicator"></div>
+        </div>
         <div class="result-info">
-            <strong>${name}</strong>
-            <span class="device-id">ID: ${id.substring(0, 20)}...</span>
+            <strong>${device.name || 'Unknown Device'}</strong>
+            <span class="device-id">ID: ${device.id.substring(0, 20)}...</span>
         </div>
         <div class="signal-strength">
             ${createSignalBars(signal)}
